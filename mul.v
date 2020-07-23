@@ -16,7 +16,8 @@ module mul (
 	wire   [63:0]  p_data;
 	reg            p_sign;
 	reg    [2 :0]  mul_con;
-
+	//当第二组数据进来的时候，由于p_data需要5个周期才能更新为第二组的
+	//但是p_sign可以在一个时钟周期内更新就会导致产生错误结果，一定要注意在正确的时钟周期内传回正确的值
 	assign product = p_sign ? -p_data : p_data;
 	assign mul_end = (mul_con == 3'd0);
 
@@ -30,17 +31,17 @@ module mul (
 		else if( !mul_end ) begin
 			mul_con  <= mul_con - 3'd1;
 		end
-		else if( mul_start ) begin
+		else if( mul_start == 1'b1 ) begin
 			mul_con  <= 3'd5;
 		end
 	end
 	always @ ( * ) begin
-		if(mul_op == 0 ) begin  
+		if(mul_op == 1'b0 ) begin  
 			op1_data = mul_op1;
 			op2_data = mul_op2;
 			p_sign   = 0;
 		end
-		else begin
+		else if (mul_op == 1'b1 )begin
 			op1_data = mul_op1[31] ? ~mul_op1+1 : mul_op1;
 			op2_data = mul_op2[31] ? ~mul_op2+1 : mul_op2;
 			p_sign   = mul_op1[31] ^ mul_op2[31];
@@ -51,8 +52,6 @@ module mul (
 	.clk    (clk),
 	.A      (op1_data),
 	.B      (op2_data),
-	.CE     (mul_start),
-	//.SCLR   (reset),
 	.P      (p_data)
 	);
 	//有符号IP核
@@ -60,7 +59,7 @@ module mul (
 	.clk    (clk),·
 	.A      (op1_data),
 	.B      (op2_data),
-	.CE     (mul_start),
+	//.CE     (mul_start),
 	//.SCLR   (reset),
 	.P      (p_data)
 	);*/

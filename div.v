@@ -1,5 +1,6 @@
 //Todo: 给出除法运算的结果后，div_end信号会循环（34个时钟周期），下次数据进来只能等到div_end信号为1的时候才可以计算，假如在等待的时间里有下一组数据，就会导致整个流水线等待除法瞎跑。
 //原因：start信号一直为1，只需要start信号一个时钟周期后变为0即可解决
+//同乘法器相同，也有输出结果的符号错误的问题
 // 34 clk cycles
 module div(
 	input                  clk,
@@ -19,10 +20,10 @@ module div(
 	reg                    div_sign;
 	reg                    dividend_sign;
 	wire    [63:0]         div_US_result;
-	reg     [ 5:0]         div_con;
+	reg     [5 :0]         div_con;
 
 	//结果的符号
-	//被除数的符号和余数相同
+	//余数和被除数的符号相同
 	assign div_quo    = div_sign ?      ( ~div_US_result[63:32] + 32'd1 ) : div_US_result[63:32];
 	assign div_rem    = dividend_sign ? ( ~div_US_result[31: 0] + 32'd1 ) : div_US_result[31: 0];
 	assign div_end    = ( div_con == 6'd0 );
@@ -37,22 +38,22 @@ module div(
 		end
 		else begin
 			if( !div_end )
-				div_con <= div_con - 1;
+				div_con <= div_con - 6'd1;
 			else begin
-				if(div_start == 1) begin
+				if(div_start == 1'b1) begin
 					div_con <= 6'd34;
 				end
 			end
 		end
 	end
 	always @ ( * ) begin
-		if( div_op == 0 ) begin 
+		if( div_op == 1'b0 ) begin 
 			div_sign       = 1'b0;
 			divsidend_data = dividend;
 			divsior_data   = divisor;
 			dividend_sign  = 1'b0;
 		end
-		else begin
+		else if( div_op == 1'b1 ) begin
 			div_sign       = divisor[31]  ^ dividend[31];
 			divsidend_data = dividend[31] ? ~dividend + 1 : dividend;
 			divsior_data   = divisor[31]  ? ~divisor + 1  : divisor;
@@ -62,8 +63,6 @@ module div(
 	//无符号IP核
 	div_gen_0 div(
 		.aclk                         (clk), 
-		//.aresetn                     (reset),
-		.aclken                       (div_start),
 		.s_axis_divisor_tdata         (divsior_data),
 		.s_axis_divisor_tvalid        (1'd1),
 		.s_axis_dividend_tdata        (divsidend_data),
