@@ -13,7 +13,8 @@ module div(
 	output  [63:0]         div_result,
 	output                 div_end
 	
-);	wire    [31:0]         div_quo;
+);
+	wire    [31:0]         div_quo;
 	wire    [31:0]         div_rem;
 	reg     [31:0]         divsior_data;
 	reg     [31:0]         divsidend_data;
