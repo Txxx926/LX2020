@@ -36,6 +36,10 @@ module id_ex(
     input wire Write_CP0_Enable_first_id,
     input wire first_is_in_delayslot_id,
     input wire [31:0] pc_second_id,
+    input wire [31:0] read_reg_rs_first_id,
+    input wire [31:0] read_reg_rt_first_id,
+    output reg [31:0] read_reg_rs_first_ex,
+    output reg [31:0] read_reg_rt_first_ex,
     output reg [31:0] pc_second_ex,
     output reg first_is_in_delayslot_ex,
     output reg Write_CP0_Enable_first_ex,
@@ -65,9 +69,21 @@ module id_ex(
     output reg [4:0]  write_reg_addr_first_ex,
     output reg      write_reg_enable_first_ex,
     output reg [4:0] write_reg_addr_second_ex,
-    output reg     write_reg_enable_second_ex
+    output reg     write_reg_enable_second_ex,
+    output reg mul_div_new
 ); 
 //first
+    always@(*) begin
+        if(!resetn || (!en_id_ex && en_ex_mem) || flush || (en_id_ex && ex_branch_taken && ex_second_en_i)) begin
+            mul_div_new = 1;
+        end
+        else if(en_id_ex)begin
+            mul_div_new = 1;
+        end
+        else begin
+            mul_div_new = 0;
+        end
+    end
     always@(posedge clk) begin
         if(!resetn || (!en_id_ex && en_ex_mem) || flush || (en_id_ex && ex_branch_taken && ex_second_en_i)) begin
             rs_first_ex                 <=             0;        
@@ -85,10 +101,12 @@ module id_ex(
             ls_signed_first_ex          <=             0;                  
             write_hilo_first_ex         <=             0;          
             aluop_first_ex              <=             0;
-            write_reg_addr_first_ex     <=             0;        
+            write_reg_addr_first_ex     <=             0;
             write_reg_enable_first_ex   <=             0;
             Write_CP0_Enable_first_ex  <=              0;
             first_is_in_delayslot_ex    <=             0;
+            read_reg_rs_first_ex        <=             0;
+            read_reg_rt_first_ex        <=             0;
         end
         else if (en_id_ex)begin
             rs_first_ex                 <=             rs_first_id                 ;        
@@ -109,7 +127,9 @@ module id_ex(
             write_reg_addr_first_ex     <=             write_reg_addr_first_id     ;        
             write_reg_enable_first_ex   <=             write_reg_enable_first_id   ; 
             Write_CP0_Enable_first_ex   <=             Write_CP0_Enable_first_id   ;
-            first_is_in_delayslot_ex    <=             first_is_in_delayslot_id ;
+            first_is_in_delayslot_ex    <=             first_is_in_delayslot_id    ;
+            read_reg_rt_first_ex        <=              read_reg_rt_first_id        ;
+            read_reg_rs_first_ex        <=              read_reg_rs_first_id        ;
            // $display("id_ex first pipeline is working!");
         end
     end
@@ -139,7 +159,7 @@ module id_ex(
                 exp_second_ex               <=             exp_second_id               ;
                 write_reg_addr_second_ex    <=             write_reg_addr_second_id    ;      
                 write_reg_enable_second_ex  <=             write_reg_enable_second_id  ;
-                pc_second_ex                <=              pc_second_id;
+                pc_second_ex                <=              pc_second_id                ;
         end
     end
 endmodule

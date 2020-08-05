@@ -5,6 +5,8 @@ module Id_stage(
     input wire [13:0] Exp_Second_old,
     input wire [31:0] PC_First_in,
     input wire [31:0] PC_Second_in,
+    input wire [31:0]reg_rs_first,
+    input wire [31:0]reg_rt_first,
     output  is_Branch_Instr_first,//to Issue Judge
     output  is_Trap_Priv_Instr_first,//to Issue Judge
     output  is_HiLoRelated_Instr_first,//to Issue Judge
@@ -36,7 +38,8 @@ module Id_stage(
     output  [4:0] rs_first,
     output  [4:0] rt_first,
     output  [4:0] rs_second,
-    output  [4:0] rt_second
+    output  [4:0] rt_second,
+    output  id_branch_taken
 );
 wire [5:0] opcode_first,opcode_second;
 wire [5:0] func_first,func_second;
@@ -128,5 +131,10 @@ Real_Decode_Second_Pipeline Real_Decode_Second_Pipeline0(
     .Branch_type(),//unused in second pipeline
     .Exp_Second_new(Exp_Second_new)
 );
-
+Id_branch Id_branch0(
+    .reg_rs(reg_rs_first),
+    .reg_rt(reg_rt_first),
+    .Branch_Type(Branch_type_first),
+    .Branch_Taken(id_branch_taken)
+);
 endmodule

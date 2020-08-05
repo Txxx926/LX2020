@@ -23,6 +23,7 @@ module instruction_fifo(
         output reg                delay_slot_out1,
         output                 fifo_empty,
         output                 fifo_1_left,
+        output                 fifo_2_left,
         output                 fifo_full
         //output                 fifo_almost_full,
 );
@@ -45,6 +46,7 @@ module instruction_fifo(
     assign fifo_full     = (sum_inst == 5'd28 || sum_inst == 5'd29|| sum_inst == 5'd30 || sum_inst == 5'd31);
     assign fifo_empty    = (sum_inst == 5'd0);
     assign fifo_1_left = (sum_inst == 5'd1);
+    assign fifo_2_left = (sum_inst == 5'd2);
 
     wire [31:0] now_output_inst1 = inst[ptr_rd];
     wire [31:0] now_output_inst2 = inst[ptr_rd + 5'd1];

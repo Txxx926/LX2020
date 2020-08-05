@@ -29,7 +29,8 @@ module Ex_Stage(
     output Branch_Taken,
     output [31:0] Branch_Address,
     output [31:0] reg_rt_first_o,
-    output wire ex_stall
+    output wire ex_stall,
+    input mul_div_new
 );
 assign reg_rt_first_o=reg_rt_first;
 wire [31:0] busa_first,busb_first,busa_second,busb_second;
@@ -59,6 +60,7 @@ Operand_Select Operand_Second(
 //     end
 // end
  ALU_First_Pipeline ALU_First_Pipeline0(
+    .mul_div_new(mul_div_new),
     .clk(clk),
     .resetn(resetn),
     .flush(flush),

@@ -30,11 +30,8 @@ module cpu_top(
         output   stall_icache
     );
     wire first_is_in_delayslot_from_fifo;
-
     reg [31:0] pc_first_from_fifo_prev;
-reg [31:0] pc_second_from_fifo_prev;
-reg [31:0]count;
-reg [31:0] i_cache_stall_count;
+    reg [31:0] pc_second_from_fifo_prev;
 
 
     wire [31:0] write_reg_data_first;
@@ -98,7 +95,7 @@ wire en_second_ex2id;
 
 
 
-    wire is_Branch_Instr_first,is_Branch_Instr_second,is_Trap_Priv_Instr_first,is_Trap_Priv_Instr_second;
+wire is_Branch_Instr_first,is_Branch_Instr_second,is_Trap_Priv_Instr_first,is_Trap_Priv_Instr_second;
 wire is_HiLoRelated_Instr_first,is_HiLoRelated_Instr_second;
 wire [4:0] rs_first_id_out,rt_first_id_out,rs_second_id_out,rt_second_id_out;
 wire [1:0] LS_first_id_out,LS_second_id_out;
@@ -116,7 +113,7 @@ wire [15:0] imm_first_id_out,imm_second_id_out;
 
 wire first_is_in_delayslot_id_out=first_is_in_delayslot_from_fifo;
 wire first_is_in_delayslot_ex;
-
+wire id_branch_taken;
     //右边的input/output就是相对于cpu而言
 wire [31:0] addr_pc,instr_data_1,instr_data_2;
 wire i_ready_1_mmu2pc,i_ready_2_mmu2pc;
@@ -185,28 +182,30 @@ wire [31:0] Exception_JUMP_PC;
         .pc(addr_pc),//to mmu 
         .i_en(i_en_pc)//to mmu
 );
-wire [31:0]rs_rdata_first_ex,rt_rdata_first_ex,rs_rdata_second_ex,rt_rdata_second_ex;
+wire [31:0]rs_rdata_first_id,rt_rdata_first_id,rs_rdata_second_ex,rt_rdata_second_ex;
+
 //Regfile
 Regfile Regfile0(
     .clk(clk),
     .resetn(resetn),
     .count(count),
     .Wen_First(write_reg_enable_first_wb),//signals from wb
-    .Wen_Second(write_reg_enable_second_wb),
+    //.Wen_Second(write_reg_enable_second_wb),
     .WData_First(write_reg_data_first),
-    .WData_Second(write_reg_data_second),
+    //.WData_Second(write_reg_data_second),
     .WAddr_First(write_reg_addr_first_wb),
-    .WAddr_Second(write_reg_addr_second_wb),
-    .Read_Addr_First_Rs(rs_first_ex),
-    .Read_Addr_First_Rt(rt_first_ex),
-    .Read_Addr_Second_Rs(rs_second_ex),
-    .Read_Addr_Second_Rt(rt_second_ex),
-    .RData_First_Rs(rs_rdata_first_ex),
-    .RData_First_Rt(rt_rdata_first_ex),
-    .RData_Second_Rs(rs_rdata_second_ex),
-    .RData_Second_Rt(rt_rdata_second_ex)
+    //.WAddr_Second(write_reg_addr_second_wb),
+    .Read_Addr_First_Rs(rs_first_id_out),//changed from id
+    .Read_Addr_First_Rt(rt_first_id_out),//changed from id
+    //.Read_Addr_Second_Rs(rs_second_id_out),//changed from id
+    //.Read_Addr_Second_Rt(rt_second_id_out),//changed from id
+    .RData_First_Rs(rs_rdata_first_id),
+    .RData_First_Rt(rt_rdata_first_id)
+    //.RData_Second_Rs(rs_rdata_second_ex),
+    //.RData_Second_Rt(rt_rdata_second_ex)
 );
 //
+
 //HILO Reg 
 wire [63:0] HILO_Data_To_Ex;
 wire [63:0]write_hilo_data_first_mem;
@@ -221,6 +220,10 @@ HILO_Reg HILO_Reg0(
     .Mem_HILO_Data(WHILO_data_mem_i),//64 bit
     .HILO_Data_To_Ex(HILO_Data_To_Ex)//64 bit to EX
 );
+wire fifo_empty,fifo_1_left,fifo_2_left;
+wire [31:0] Instr_First_id_in,Instr_Second_id_in;
+wire [31:0] reg_rs_first_id,reg_rt_first_id;
+
 //global control 
 global_control gc0(
         .clk(clk),
@@ -231,7 +234,7 @@ global_control gc0(
         .id_ex_alu_op(aluop_first_ex),
         .id_ex_mem_type(ls_first_ex),
         .id_ex_mem_wb_reg_dest(write_reg_addr_first_ex),
-        .ex_mem_cp0_wen(write_cp0_enable_first_mem),
+        .ex_mem_cp0_wen(Write_CP0_Enable_first_mem_i),
         .ex_mem_mem_type(ls_first_mem_i),
         .ex_mem_mem_wb_reg_dest(write_reg_addr_first_mem_i),
         .id_rs(rs_first_id_out),
@@ -243,16 +246,18 @@ global_control gc0(
         .en_if_id(en_if_id),//output wire        en_if_id,
         .en_id_ex(en_id_ex),//output wire        en_id_ex,
         .en_ex_mem(en_ex_mem),//output wire        en_ex_mem,
-        .en_mem_wb(en_mem_wb)//output wire        en_mem_wb
+        .en_mem_wb(en_mem_wb),//output wire        en_mem_wb
+        .fifo_1_left(fifo_1_left),
+        .Branch_first(is_Branch_Instr_first),
+        .fifo_2_left(fifo_2_left)
+        //.Instr_First_id_in(Instr_First_id_in)
 );
 
 //
 //if-id wire 
-wire [31:0] Instr_First_id_in,Instr_Second_id_in;
 wire [13:0] Exp_First_old_id_in,Exp_Second_old_id_in;
 wire [31:0] pc_first_from_fifo,pc_second_from_fifo;
 wire [13:0] exp_first_from_fifo,exp_second_from_fifo;
-wire fifo_empty,fifo_1_left;
 wire second_en_id;
 //FIFO
 instruction_fifo fifo(
@@ -261,7 +266,7 @@ instruction_fifo fifo(
         .resetn(resetn&&(~Branch_Taken || !en_if_id)&&~has_exp),
         .master_is_branch(is_Branch_Instr_first),//
         .read_en1(en_if_id),
-        .read_en2(1'b0),//second_en_id),
+        .read_en2(second_en_id),
         .en_id_ex(en_id_ex),
         .write_en_1(ibus_ready_1),
         .write_en_2(ibus_ready_2),
@@ -280,7 +285,8 @@ instruction_fifo fifo(
         .delay_slot_out1(first_is_in_delayslot_from_fifo),//1 bit
         .fifo_empty(fifo_empty),
         .fifo_1_left(fifo_1_left),
-        .fifo_full(fifo_full)
+        .fifo_full(fifo_full),
+        .fifo_2_left(fifo_2_left)
 );
 
 
@@ -294,6 +300,8 @@ Id_stage Id_stage0(
     .Exp_Second_old(exp_second_from_fifo),//[13:0]
     .PC_First_in(pc_first_from_fifo),//[31:0]
     .PC_Second_in(pc_second_from_fifo),//[31:0]
+    .reg_rs_first(reg_rs_first_id),
+    .reg_rt_first(reg_rt_first_id),
     .is_Branch_Instr_first(is_Branch_Instr_first),//to Issue Judge
     .is_Trap_Priv_Instr_first(is_Trap_Priv_Instr_first),//to Issue Judge
     .is_HiLoRelated_Instr_first(is_HiLoRelated_Instr_first),//to Issue Judge
@@ -325,32 +333,34 @@ Id_stage Id_stage0(
     .rs_first(rs_first_id_out),
     .rt_first(rt_first_id_out),
     .rs_second(rs_second_id_out),
-    .rt_second(rt_second_id_out)
+    .rt_second(rt_second_id_out),
+    .id_branch_taken(id_branch_taken)
 );
 //dual engine 
 dual_issue_ctrl dic0(
 	.first_en(en_if_id),
-	.first_inst_priv(is_Trap_Priv_Instr_first),          //第一条流水线指令是特权指�??
+	.first_inst_priv(is_Trap_Priv_Instr_first),          //第一条流水线指令是特权指�???
 	.first_inst_hilo(is_HiLoRelated_Instr_first),          //第一条流水线指令要用到HILO
-	.first_inst_wb_en(Write_Reg_Enable_First_id_out),         //第一条流水线指令是否要写�??
+	.first_inst_wb_en(Write_Reg_Enable_First_id_out),         //第一条流水线指令是否要写�???
 	.first_inst_rd(Write_Reg_Addr_first_id_out),            //第一条流水线指令的目的寄存器
 	.first_inst_load(LS_first_id_out),          //第一条流水线指令是不是load指令
 	.first_inst_load_rt(rt_first_id_out),       //load 指令要写的目的寄存器，可以�?�虑将该信号给first_inst_rd
 	//second pipline information
-	.second_inst_rs(rs_second_id_out),           //第二条流水线指令的第�??个源寄存�??
+	.second_inst_rs(rs_second_id_out),           //第二条流水线指令的第�???个源寄存�???
 	.second_inst_rt(rt_second_id_out),           //第二条流水线指令的第二个源寄存器
-	.second_inst_priv(is_Trap_Priv_Instr_second),         //第二条流水线指令是特权指�??
-	.second_inst_branch(is_Branch_Instr_second),       //第二条流水线指令是分支跳转指�??
+	.second_inst_priv(is_Trap_Priv_Instr_second),         //第二条流水线指令是特权指�???
+	.second_inst_branch(is_Branch_Instr_second),       //第二条流水线指令是分支跳转指�???
 	.second_inst_hilo(is_HiLoRelated_Instr_second),         //第二条流水线指令要用到HILO
-	.second_inst_mem_type(LS_second_id_out),     //第二条指令访存类型，01为load,10为store�??00为其�??
+	.second_inst_mem_type(LS_second_id_out),     //第二条指令访存类型，01为load,10为store�???00为其�???
 	//fifo information
 	.fifo_empty(fifo_empty),               //FIFO为空
-	.fifo_one(fifo_1_left),                 //FIFO中只有一条指�??
+	.fifo_one(fifo_1_left),                 //FIFO中只有一条指�???
 	//output
 	.second_en(second_en_id)                 //第二条流水线可以发射
 );
 //
 assign en_second_ex2id=en_second_ex;
+wire [31:0] rs_rdata_first_ex,rt_rdata_first_ex;
 id_ex id_ex0(
     .clk(clk),
     .resetn(resetn),
@@ -376,6 +386,10 @@ id_ex id_ex0(
     .exp_second_id(exp_second_id_out),
     .pc_first_id(pc_first_from_fifo),
     .pc_second_id(pc_second_from_fifo),
+    .read_reg_rs_first_id(reg_rs_first_id),
+    .read_reg_rt_first_id(reg_rt_first_id),
+    .read_reg_rs_first_ex(reg_rs_first_ex),
+    .read_reg_rt_first_ex(reg_rt_first_ex),
     .pc_second_ex(pc_second_ex),
     .instr_first_id(Instr_First_id_in),
     .branch_type_first_id(Branch_type_first_id_out),
@@ -418,9 +432,11 @@ id_ex id_ex0(
     .write_reg_addr_first_ex(write_reg_addr_first_ex),
     .write_reg_enable_first_ex(write_reg_enable_first_ex),
     .write_reg_addr_second_ex(write_reg_addr_second_ex),
-    .write_reg_enable_second_ex(write_reg_enable_second_ex)
+    .write_reg_enable_second_ex(write_reg_enable_second_ex),
+    .mul_div_new(mul_div_new)
 ); 
 //
+
 
 
 wire [13:0] exp_first_ex_o,exp_second_ex_o;
@@ -430,6 +446,7 @@ wire [31:0] cp0_data_to_ex;
 wire [31:0] reg_rt_first_ex_o;
 //ex stage
 Ex_Stage Ex0(
+    .mul_div_new(mul_div_new),
     .clk(clk),
     .resetn(resetn),
     .flush(has_exp),
@@ -472,90 +489,92 @@ Ex_Stage Ex0(
 //     $display("------debug end-------");
 //     end
 // end
+
 //
 forward forward_first_rs(
-	.first_wb_en(write_reg_enable_first_wb),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.first_wb_addr(write_reg_addr_first_wb),        //当前位于主流水线写回阶段的指令需要写的寄存器�??,5 bit
-	.first_wb_data(write_reg_data_first),        //当前位于主流水线写回阶段的结�?? 32 bit
+	.first_ex_en(write_reg_enable_first_ex),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
+	.first_ex_addr(write_reg_addr_first_ex),        //当前位于主流水线写回阶段的指令需要写的寄存器�???,5 bit
+	.first_ex_data(aluout_first_ex),        //当前位于主流水线写回阶段的结�??? 32 bit
 	.first_mem_en(write_reg_enable_first_mem_i),         //寄存器使能，当前位于主流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�?? 5 bit 
-	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�?? 32 bit
+	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�??? 5 bit 
+	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�??? 32 bit
 
-	.second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�??
-	.second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�??
-	.second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�??
-	.second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�??
+	// .second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
+	// .second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�???
+	// .second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�???
+	// .second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
+	// .second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�???
+	// .second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�???
 
 
-	.reg_addr(rs_first_ex),             //执行阶段�??要读的寄存器�??
-	.reg_data(rs_rdata_first_ex),             //从寄存器中读出的结果
+	.reg_addr(rs_first_id_out),             //执行阶段�???要读的寄存器�???
+	.reg_data(rs_rdata_first_id),             //从寄存器中读出的结果
 
-	.result_data(reg_rs_first_ex)           //前推后的结果
+	.result_data(reg_rs_first_id)           //前推后的结果
 );
 forward forward_first_rt(
-	.first_wb_en(write_reg_enable_first_wb),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.first_wb_addr(write_reg_addr_first_wb),        //当前位于主流水线写回阶段的指令需要写的寄存器�??,5 bit
-	.first_wb_data(write_reg_data_first),        //当前位于主流水线写回阶段的结�?? 32 bit
+	.first_ex_en(write_reg_enable_first_ex),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
+	.first_ex_addr(write_reg_addr_first_ex),        //当前位于主流水线写回阶段的指令需要写的寄存器�???,5 bit
+	.first_ex_data(aluout_first_ex),        //当前位于主流水线写回阶段的结�??? 32 bit
 	.first_mem_en(write_reg_enable_first_mem_i),         //寄存器使能，当前位于主流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�?? 5 bit 
-	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�?? 32 bit
-
-	.second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�??
-	.second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�??
-	.second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�??
-	.second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�??
+	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�??? 5 bit 
+	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�??? 32 bit
 
 
+	// .second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
+	// .second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�???
+	// .second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�???
+	// .second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
+	// .second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�???
+	// .second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�???
 
-	.reg_addr(rt_first_ex),             //执行阶段�??要读的寄存器�??
-	.reg_data(rt_rdata_first_ex),             //从寄存器中读出的结果
 
-	.result_data(reg_rt_first_ex)           //前推后的结果
+
+	.reg_addr(rt_first_id_out),             //执行阶段�???要读的寄存器�???
+	.reg_data(rt_rdata_first_id),             //从寄存器中读出的结果
+
+	.result_data(reg_rt_first_id)           //前推后的结果
 );
-forward forward_second_rs(
-	.first_wb_en(write_reg_enable_first_wb),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.first_wb_addr(write_reg_addr_first_wb),        //当前位于主流水线写回阶段的指令需要写的寄存器�??,5 bit
-	.first_wb_data(write_reg_data_first),        //当前位于主流水线写回阶段的结�?? 32 bit
-	.first_mem_en(write_reg_enable_first_mem_i),         //寄存器使能，当前位于主流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�?? 5 bit 
-	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�?? 32 bit
+// forward forward_second_rs(
+// 	.first_wb_en(write_reg_enable_first_wb),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
+// 	.first_wb_addr(write_reg_addr_first_wb),        //当前位于主流水线写回阶段的指令需要写的寄存器�???,5 bit
+// 	.first_wb_data(write_reg_data_first),        //当前位于主流水线写回阶段的结�??? 32 bit
+// 	.first_mem_en(write_reg_enable_first_mem_i),         //寄存器使能，当前位于主流水线访存阶段的指令需要写寄存器时，该信号置为1
+// 	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�??? 5 bit 
+// 	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�??? 32 bit
 
-	.second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�??
-	.second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�??
-	.second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�??
-	.second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�??
+// 	.second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
+// 	.second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�???
+// 	.second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�???
+// 	.second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
+// 	.second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�???
+// 	.second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�???
 
-	.reg_addr(rs_second_ex),             //执行阶段�??要读的寄存器�??
-	.reg_data(rs_rdata_second_ex),             //从寄存器中读出的结果
+// 	.reg_addr(rs_second_id_out),             //执行阶段�???要读的寄存器�???
+// 	.reg_data(rs_rdata_second_ex),             //从寄存器中读出的结果
 
-	.result_data(reg_rs_second_ex)           //前推后的结果
-);
-forward forward_second_rt(
-	.first_wb_en(write_reg_enable_first_wb),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.first_wb_addr(write_reg_addr_first_wb),        //当前位于主流水线写回阶段的指令需要写的寄存器�??,5 bit
-	.first_wb_data(write_reg_data_first),        //当前位于主流水线写回阶段的结�?? 32 bit
-	.first_mem_en(write_reg_enable_first_mem_i),         //寄存器使能，当前位于主流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�?? 5 bit 
-	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�?? 32 bit
+// 	.result_data(reg_rs_second_ex)           //前推后的结果
+// );
+// forward forward_second_rt(
+// 	.first_wb_en(write_reg_enable_first_wb),          //寄存器使能，当前位于主流水线写回阶段的指令需要写寄存器时，该信号置为1
+// 	.first_wb_addr(write_reg_addr_first_wb),        //当前位于主流水线写回阶段的指令需要写的寄存器�???,5 bit
+// 	.first_wb_data(write_reg_data_first),        //当前位于主流水线写回阶段的结�??? 32 bit
+// 	.first_mem_en(write_reg_enable_first_mem_i),         //寄存器使能，当前位于主流水线访存阶段的指令需要写寄存器时，该信号置为1
+// 	.first_mem_addr(write_reg_addr_first_mem_i),       //当前位于主流水线访存阶段的指令需要写的寄存器�??? 5 bit 
+// 	.first_mem_data(aluout_first_mem_i),       //当前位于主流水alu阶段的结�??? 32 bit
 
-	.second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
-	.second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�??
-	.second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�??
-	.second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
-	.second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�??
-	.second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�??
+// 	.second_mem_en(write_reg_enable_second_mem_i),        //寄存器使能，当前位于辅流水线访存阶段的指令需要写寄存器时，该信号置为1
+// 	.second_mem_addr(write_reg_addr_second_mem_i),      //当前位于辅流水线访存阶段的指令需要写的寄存器�???
+// 	.second_mem_data(aluout_second_mem_i),      //当前位于辅流水线访存阶段的结�???
+// 	.second_wb_en(write_reg_enable_second_wb),         //寄存器使能，当前位于辅流水线写回阶段的指令需要写寄存器时，该信号置为1
+// 	.second_wb_addr(write_reg_addr_second_wb),       //当前位于辅流水线写回阶段的指令需要写的寄存器�???
+// 	.second_wb_data(write_reg_data_second),       //当前位于辅流水线写回阶段的结�???
 
-	.reg_addr(rt_second_ex),             //执行阶段�??要读的寄存器�??
-	.reg_data(rt_rdata_second_ex),             //从寄存器中读出的结果
+// 	.reg_addr(rt_second_id_out),             //执行阶段�???要读的寄存器�???
+// 	.reg_data(rt_rdata_second_ex),             //从寄存器中读出的结果
 
-	.result_data(reg_rt_second_ex)           //前推后的结果
-);
+// 	.result_data(reg_rt_second_ex)           //前推后的结果
+// );
 
 ex_mem ex_mem0(
     .clk(clk),
@@ -709,83 +728,58 @@ Wb_Stage Wb_0(
     .Write_HILO_Enable_First_o(write_hilo_enable_first_wb),//same
     .Write_HILO_Data_o(write_hilo_data_first_wb)//same
 );
-always@(posedge clk)begin
-    if(!resetn)begin
-        count=1;
-    end
-    else begin
-        count<=count+1;
-    end
-end
-always@(posedge clk)begin
-if(~resetn)begin
-    
-end
-else if(count>32'h002e0000) begin
-    if(i_stall_cpu)begin
-        i_cache_stall_count<=i_cache_stall_count+1;
-        //$display("i_cache_stall_count=0x%8h,count=0x%8h",i_cache_stall_count,count);
-    end
-    if(ex_stall)begin
-        //$display("is_ex_satalling,count=0x%8h",count);
-    end
-    //$display("en_if=%1b,en_if_id=%1b,en_id_ex=%1b,en_ex_mem=%1b,en_mem_wb=%1b,count=%8h",en_if,en_if_id,en_id_ex,en_ex_mem,en_mem_wb,count);
-    //$display("I_cache_stall=%1b,d_cache_stall=%1b,Branch_taken=%1b,branch address=0x%8h,pc_addr=0x%8h,count=0x%8h",i_stall_cpu,d_stall_cpu,Branch_Taken,Branch_Address,addr_pc,count);
-    //if(!i_stall_cpu)begin
-    //$display("alu_src_ex=%2b,reg_rs_first=0x%8h,reg_rt_first=0x%8h,imm_first=0x%4h,imm_extend_signed=%1b,Out_first_is=0x%8h,pc_first_ex=0x%8h,count=%8h",alu_src_first_ex,reg_rs_first_ex,reg_rt_first_ex,imm_first_ex,imm_extend_signed_first_ex,aluout_first_ex,pc_first_ex,count);
-    //$display("rs_first_ex=%5b,reg_rs_first=%8h,rt_first_ex=%5b,reg_rt_first=0x%8h,HILO_Data_To_Ex=0x%16h,count=%8h",rs_first_ex,reg_rs_first_ex,rt_first_ex,reg_rt_first_ex,HILO_Data_To_Ex,count);
-    //$display("second_en_id=%1b",second_en_id);
-    //end
-    //$display("pc_fetch=0x%8h,pc_id=0x%8h,pc_ex=0x%8h,pc_mem=0x%8h,count=0x%8h",addr_pc,pc_first_from_fifo,pc_first_ex,pc_first_mem_i,count);
-    //$display("pc_ex=0x%8h,reg_rs=0x%8h,reg_rt=0x%8h,Branch_type=%4b,WHILO_Data_ex=0x%16h,WHILO_data_mem_i=0x%16h,WHILO_data_wb=0x%16h,write_hilo_mem=%2b,count=0x%8h,",pc_first_ex,reg_rs_first_ex,reg_rt_first_ex,branch_type_first_ex,WHILO_Data_ex,WHILO_data_mem_i,write_hilo_data_first_wb,write_hilo_first_mem_i,count);
-    //$display("pc_id=0x%8h,id_instr=0x%8h,fifo_full=%1b,count=0x%8h",pc_first_from_fifo,Instr_First_id_in,fifo_full,count);
-    
-    if(has_exp==1'b1)begin
-        //$display("There is a Exception!,pc=0x%8h,exp=%14b",pc_first_mem_i,exp_first_mem_i);
-    end
-    // if(i_stall_cpu==1'b1)begin
-    // $display("iCache is stalling");
-    // end
-    // if(resetn&&~i_stall_cpu)begin
-    // $display("pc_first=%8h pc_second=%8h",pc_first_wb,pc_first_ex+32'd4);
-    // $display("address_pc=%8h",addr_pc);
-    // $display("Ex_Branch_Taken=%1b",Branch_Taken);
-    // $display("Instr_data_1=0x%8h,instr_data_2=0x%8h",instr_data_1,instr_data_2);
-    // $display("en_if=%1b,en_if_id=%1b,en_id_ex=%1b,en_ex_mem=%1b,en_mem_wb=%1b",en_if,en_if_id,en_id_ex,en_ex_mem,en_mem_wb);
-    // $display("flush=%1b",has_exp&&en_ex_mem);
-    // $display("pc_first_id=%8h",pc_first_from_fifo);
-    // $display("Write_reg_enable_first=%1b,Write_reg_enable_second=%1b",Write_Reg_Enable_First_id_out,Write_Reg_Enable_Second_id_out);
-    // $display("pc_first_from_fifo=0x%8h,pc_second_from_fifo=0x%8h",pc_first_from_fifo,pc_second_from_fifo);
-    // end
-    // if(pc_first_ex!=32'h0)begin
-    //     $display("pc_first_ex=0x%8h",pc_first_ex);
-    //     $display("pc_second_ex=0x%8h",pc_second_ex);
-    // end
-    // if(pc_first_wb!=32'h0)begin
-    //     $display("pc_first_wb=0x%8h",pc_first_wb);
-    // end
-    // pc_first_from_fifo_prev<=pc_first_from_fifo;
-    // pc_second_from_fifo_prev<=pc_second_from_fifo;
-    // if(pc_first_from_fifo!=32'h0&&pc_first_from_fifo_prev!=pc_first_from_fifo)begin
-    //     $display("pc_first_from_fifo=0x%8h",pc_first_from_fifo);
-    //     $display("Instr_first=0x%8h",Instr_First_id_in);
-    // end
-    // if(pc_second_from_fifo!=32'h0&&pc_second_from_fifo_prev!=pc_second_from_fifo)begin
-    //     $display("pc_first_from_fifo=0x%8h",pc_second_from_fifo);
-    //     $display("Instr_second=0x%8h",Instr_Second_id_in);
-    // end  
-end
-end
 
-        assign  debug_pc_master =pc_first_wb_i;
-        assign debug_pc_slave= pc_first_wb_i+32'd4;
-        assign debug_wb_rf_wen_master = {4{write_reg_enable_first_wb}};
-        assign debug_wb_rf_wen_slave = {4{write_reg_enable_second_wb}};
-        assign debug_wb_rf_wnum_master = write_reg_addr_first_wb;
-        assign debug_wb_rf_wnum_slave = write_reg_addr_second_wb;
-        assign debug_wb_rf_wdata_master = write_reg_data_first;
-        assign debug_wb_rf_wdata_slave = write_reg_data_second;
+// reg [63:0]clk_count;
+// always@(posedge clk)begin
+//     if(!resetn)begin
+//         clk_count <= 0;
+//     end
+//     else begin
+//         clk_count<=clk_count+1;
+//         $display("clk_count = %16d",clk_count);
+//     end
+// end
+// reg [63:0] i_cache_stall_count;
+// always @ (posedge clk) begin
+//     if(!resetn) begin
+//         i_cache_stall_count <= 64'b0;
+//     end
+//     else if(i_stall_cpu) begin
+//         i_cache_stall_count <= i_cache_stall_count + 1;
+//         $display("ICache_stall = %64d",i_cache_stall_count);
+//     end
+// end
+// reg [63:0] d_cache_stall_count;
+// always @ (posedge clk) begin
+//     if(!resetn) begin
+//         d_cache_stall_count <= 64'b0;
+//     end
+//     else if(d_stall_cpu) begin
+//         d_cache_stall_count <= d_cache_stall_count +1;
+//         $display("DCache_stall = %64d",d_cache_stall_count);
+//     end
+// end
+// reg [63:0] ex_stall_count;
+// always @(posedge clk) begin
+//     if(!resetn) begin
+//         ex_stall_count <= 64'b0;
+//     end
+//     else if(ex_stall) begin
+//         ex_stall_count <= ex_stall_count +1;
+//         $display("ex_stall = %64d",ex_stall_count);
+//     end
+// end
 
-        assign stall_icache = ex_stall || d_stall_cpu;
+
+    assign  debug_pc_master =pc_first_wb_i;
+    assign debug_pc_slave= pc_first_wb_i+32'd4;
+    assign debug_wb_rf_wen_master = {4{write_reg_enable_first_wb}};
+    assign debug_wb_rf_wen_slave = {4{write_reg_enable_second_wb}};
+    assign debug_wb_rf_wnum_master = write_reg_addr_first_wb;
+    assign debug_wb_rf_wnum_slave = write_reg_addr_second_wb;
+    assign debug_wb_rf_wdata_master = write_reg_data_first;
+    assign debug_wb_rf_wdata_slave = write_reg_data_second;
+
+    assign stall_icache = ex_stall || d_stall_cpu;
 
 endmodule

@@ -13,6 +13,7 @@ module ALU_First_Pipeline(
     output reg  [13:0] Exp_First_new,
     output reg  [31:0] Out,
     output reg  [63:0] WHILO_Data,
+    input  mul_div_new,
     output  stall// multicycle
 );
 //Out source HILO,ALU_Result,CP0,rs,rt,
@@ -118,6 +119,10 @@ always@(*)begin//overflow
         end
     endcase
 end
+
+
+    
+    //qfs
 //div and mul
     //div and mul
     reg             mult_done_prev, div_done_prev;
@@ -125,14 +130,38 @@ end
     wire [63:0]      _hilo_mult, _hilo_div;
     reg [1:0]       mult_op, div_op;
     wire            mult_commit, div_commit;
+
+
+
+
+
+
+    //qfs
+    reg [3:0] mul_div_cnt;
+    always@(posedge clk) begin
+        if(mul_div_new) begin
+            mul_div_cnt <= 0;
+        end
+        else if(div_done!= div_done_prev || mult_done != mult_done_prev) begin
+            mul_div_cnt <= mul_div_cnt + 1;
+        end
+        else begin
+            mul_div_cnt <= mul_div_cnt;
+        end
+    end
+    wire mul_div = (mul_div_cnt != 2);
+
+
+
+
     // Pipeline control.
     reg             mdu_prepare;
-    wire            mdu_running = ~(mult_done & div_done) || mdu_prepare;
+    wire            mdu_running = (~(mult_done & div_done) || mdu_prepare ) && (mul_div_cnt !=2);
     
 
     assign stall      = flush? 0 : (mdu_running);                      //stall待处理,flush_i为输入信号
-    assign mult_commit  = mult_done && (mult_done_prev != mult_done);      //是否可以提交乘法的结果
-    assign div_commit   = div_done && (div_done_prev != div_done);         //是否可以提交除法的结果
+    assign mult_commit  = mult_done && ((mult_done_prev != mult_done)||(!mul_div)) && ((aluop == 7'd13)||(aluop == 7'd14));      //是否可以提交乘法的结果
+    assign div_commit   = div_done && ((div_done_prev != div_done)||(!mul_div)) && ((aluop == 7'd11)||(aluop == 7'd12));         //是否可以提交除法的结果
 
     always @ (posedge clk) begin
         if(!resetn) begin
@@ -183,10 +212,14 @@ end
         end
     end
 
+
+
+
+    
     divider div(
         .clk        (clk),
         .resetn     (resetn),
-        .div_op     (div_op),
+        .div_op     (div_op & {2{mul_div}}),
         .divisor    (busb),
         .dividend   (busa),
         .result     (_hilo_div),
@@ -196,7 +229,7 @@ end
     multplier mult(
         .clk        (clk),
         .resetn     (resetn),
-        .op         (mult_op),
+        .op         (mult_op & {2{mul_div}}),
         .a          (busa),
         .b          (busb),
         .c          (_hilo_mult),

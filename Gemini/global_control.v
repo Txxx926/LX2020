@@ -16,7 +16,11 @@ module global_control(
         input [4:0]         id_rt,
         input               ex_branch_taken,
         input               fifo_full,
+        input               fifo_1_left,
         input               exp_detect,
+        input               Branch_first,
+        input               fifo_2_left,
+        //input [31:0]        Instr_First_id_in,
 
         output wire        en_if,
         output wire        en_if_id,
@@ -34,9 +38,21 @@ module global_control(
         else if(icache_stall) begin
             if(exp_detect || mem_stall)
                 en = 5'b00000;
-            else begin
+            else if(ex_branch_taken || ex_stall)
                 en = 5'b00001;
-            end
+            else if(id_ex_alu_op == `MFC0_OP && ex_mem_cp0_wen)
+                en = 5'b00001;
+            else if(id_ex_mem_type ==2'b01 &&
+                ((id_ex_mem_wb_reg_dest == id_rs) ||
+                (id_ex_mem_wb_reg_dest == id_rt)))
+                en = 5'b00001;
+            else if(ex_mem_mem_type==2'b01&&((ex_mem_mem_wb_reg_dest==id_rs)||(ex_mem_mem_wb_reg_dest==id_rt)))
+                en=5'b00001;
+
+            else if( fifo_1_left && Branch_first)
+                en = 5'b00001;
+            else
+                en = 5'b01111;
         end
         else if(mem_stall) begin
             if(ex_branch_taken)
@@ -52,6 +68,9 @@ module global_control(
                 ((id_ex_mem_wb_reg_dest == id_rs) ||
                 (id_ex_mem_wb_reg_dest == id_rt))) begin
             en = 5'b10011;
+        end
+        else if(ex_mem_mem_type==2'b01&&((ex_mem_mem_wb_reg_dest==id_rs)||(ex_mem_mem_wb_reg_dest==id_rt)))begin
+             en=5'b10001;
         end
         else
             en = 5'b11111;

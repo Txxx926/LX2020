@@ -3,19 +3,19 @@ module Regfile(
     input wire resetn,
     input wire [31:0]count,
     input wire Wen_First,
-    input wire Wen_Second,
+    //input wire Wen_Second,
     input wire [31:0] WData_First,
-    input wire [31:0] WData_Second,
+    //input wire [31:0] WData_Second,
     input wire [4:0] WAddr_First,
-    input wire [4:0] WAddr_Second,
+    //input wire [4:0] WAddr_Second,
     input wire [4:0] Read_Addr_First_Rs,
     input wire [4:0] Read_Addr_First_Rt,
-    input wire [4:0] Read_Addr_Second_Rs,
-    input wire [4:0] Read_Addr_Second_Rt,
+    //input wire [4:0] Read_Addr_Second_Rs,
+    //input wire [4:0] Read_Addr_Second_Rt,
     output reg [31:0] RData_First_Rs,
-    output reg [31:0] RData_First_Rt,
-    output reg [31:0] RData_Second_Rs,
-    output reg [31:0] RData_Second_Rt
+    output reg [31:0] RData_First_Rt
+    //output reg [31:0] RData_Second_Rs,
+    //output reg [31:0] RData_Second_Rt
 );
 
 reg [31:0] REG[31:0];
@@ -34,16 +34,19 @@ always@(posedge clk)begin
        REG[30]<=32'h0;REG[31]<=32'h0;
     end
     else begin
-        if(Wen_First==1'b1&&Wen_Second==1'b1&&WAddr_First==WAddr_Second&&WAddr_First!=5'h0)begin
-            REG[WAddr_First]<=WData_First;
-        end
-        else begin
-            if(Wen_Second==1'b1&&WAddr_Second!=5'h0)begin
-                REG[WAddr_Second]<=WData_Second;
-            end
-            if(Wen_First==1'b1&&WAddr_First!=5'h0)begin
+        // if(Wen_First==1'b1&&Wen_Second==1'b1&&WAddr_First==WAddr_Second&&WAddr_First!=5'h0)begin
+        //     REG[WAddr_First]<=WData_First;
+        // end
+        // else begin
+        //     // if(Wen_Second==1'b1&&WAddr_Second!=5'h0)begin
+        //     //     REG[WAddr_Second]<=WData_Second;
+        //     // end
+        //     if(Wen_First==1'b1&&WAddr_First!=5'h0)begin
+        //         REG[WAddr_First]<=WData_First;
+        //     end
+        // end
+        if(Wen_First==1'b1&&WAddr_First!=5'h0)begin
                 REG[WAddr_First]<=WData_First;
-            end
         end
     end
 end
@@ -51,9 +54,6 @@ always@(*)begin
     //First_RS
     if(Read_Addr_First_Rs==5'h0)begin
         RData_First_Rs=32'h0;
-    end
-    else if(Read_Addr_First_Rs==WAddr_Second&&Wen_Second==1'b1) begin
-        RData_First_Rs=WData_Second;
     end
     else if(Read_Addr_First_Rs==WAddr_First&&Wen_First==1'b1)begin
         RData_First_Rs=WData_First;
@@ -65,40 +65,11 @@ always@(*)begin
     if(Read_Addr_First_Rt==5'h0)begin
         RData_First_Rt=32'h0;
     end
-    else if(Read_Addr_First_Rt==WAddr_Second&&Wen_Second==1'b1) begin
-        RData_First_Rt=WData_Second;
-    end
     else if(Read_Addr_First_Rt==WAddr_First&&Wen_First==1'b1)begin
         RData_First_Rt=WData_First;
     end
     else begin
         RData_First_Rt=REG[Read_Addr_First_Rt];
     end 
-    //Second_RS
-    if(Read_Addr_Second_Rs==5'h0)begin
-        RData_Second_Rs=32'h0;
-    end
-    else if(Read_Addr_Second_Rs==WAddr_Second&&Wen_Second==1'b1) begin
-        RData_Second_Rs=WData_Second;
-    end
-    else if(Read_Addr_Second_Rs==WAddr_First&&Wen_First==1'b1)begin
-        RData_Second_Rs=WData_First;
-    end
-    else begin
-        RData_Second_Rs=REG[Read_Addr_Second_Rs];
-    end
-    //Second_RT
-    if(Read_Addr_Second_Rt==5'h0)begin
-        RData_Second_Rt=32'h0;
-    end
-    else if(Read_Addr_Second_Rt==WAddr_Second&&Wen_Second==1'b1) begin
-        RData_Second_Rt=WData_Second;
-    end
-    else if(Read_Addr_Second_Rt==WAddr_First&&Wen_First==1'b1)begin
-        RData_Second_Rt=WData_First;
-    end
-    else begin
-        RData_Second_Rt=REG[Read_Addr_Second_Rt];
-    end
 end
 endmodule
